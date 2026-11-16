@@ -13,6 +13,6 @@ else if(reg_write && (rd_sel!=0)) begin
 registerfile[rd_sel]<=wb_data;
 end
 end
-assign rs1_data = registerfile[rs1_sel];
-assign rs2_data = registerfile[rs2_sel];
+assign rs1_data = (rs1_sel == 0) ? 32'b0 : registerfile[rs1_sel];
+assign rs2_data = (rs2_sel == 0) ? 32'b0 : registerfile[rs2_sel];
 endmodule
