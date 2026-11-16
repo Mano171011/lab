@@ -1,68 +1,119 @@
 
-module instruction_decoder(
+module maincontrol(
     input logic [31:0] instruction,
+
     output logic [4:0] rs1, rs2, rd,
     output logic [6:0] opcode, imm11_5,
     output logic [2:0] func3,
-    output logic [12:0] imm,
     output logic func7_5,
-    output logic [19:0] imm_uj
+    output logic [31:0] imm_output,
+
+    output logic reg_write,
+    output logic alu_src,
+    output logic [2:0] alu_op,
+    output logic mem_read,
+    output logic mem_write,
+    output logic mem_to_reg,
+    output logic branch,
+    output logic auipc,
+    output logic jump
 );
-
-always_comb begin
-
-    // Default values prevent unintended latches
-    opcode   = instruction[6:0];
-    rd       = instruction[11:7];
-    func3    = instruction[14:12];
-    rs1      = instruction[19:15];
-    rs2      = instruction[24:20];
-    func7_5  = instruction[30];
-    imm11_5  = instruction[31:25];
-    imm      = 13'd0;
-    imm_uj   = 20'd0;
-
-    case(opcode)
-
-        // I-type
-        7'b0010011, 7'b0000011, 7'b1100111: begin
-            imm = {1'b0, instruction[31:20]};
-        end
-
-        // S-type
-        7'b0100011: begin
-            imm = {1'b0, instruction[31:25],
-                         instruction[11:7]};
-        end
-
-        // B-type
-        7'b1100011: begin
-            imm = {instruction[31], instruction[7],
-                   instruction[30:25], instruction[11:8],
-                   1'b0};
-        end
-
-        // U-type
-        7'b0110111, 7'b0010111: begin
-            imm_uj = instruction[31:12];
-        end
-
-        // J-type
-        7'b1101111: begin
-            imm_uj = {instruction[31], instruction[19:12],
-                      instruction[20], instruction[30:21]};
-        end
-
-        default: begin
-            rd      = 5'd0;
-            func3   = 3'd0;
-            rs1     = 5'd0;
-            rs2     = 5'd0;
-            imm11_5 = 7'd0;
-            func7_5 = 1'b0;
-        end
-
-    endcase
-end
+    logic [12:0] imm;
+    logic [19:0] imm_uj;
+    // Instruction decoder
+    instruction_decoder DEC (
+        .instruction(instruction),
+        .rs1(rs1),
+        .rs2(rs2),
+        .rd(rd),
+        .opcode(opcode),
+        .imm11_5(imm11_5),
+        .func3(func3),
+        .imm(imm),
+        .func7_5(func7_5),
+        .imm_uj(imm_uj)
+    );
+    // Immediate generator
+    immgenerator IMM (
+        .imm_input(imm),
+        .imm_input_uj(imm_uj),
+        .fn3(func3),
+        .opcode(opcode),
+        .imm_output(imm_output)
+    );
+    // Main control signal generation
+    always_comb begin
+        // Default control signals
+        reg_write = 1'b0;
+        alu_src   = 1'b0;
+        alu_op    = 3'b000;
+        mem_read  = 1'b0;
+        mem_write = 1'b0;
+        mem_to_reg = 1'b0;
+        branch    = 1'b0;
+        auipc     = 1'b0;
+        jump      = 1'b0;
+        case(opcode)
+            // R-type: ADD, SUB, AND, OR, XOR, etc.
+            7'b0110011: begin
+                reg_write = 1'b1;
+                alu_src   = 1'b0;
+                alu_op    = 3'b010;
+            end
+            // I-type: ADDI, ANDI, ORI, XORI, SLTI, shifts
+            7'b0010011: begin
+                reg_write = 1'b1;
+                alu_src   = 1'b1;
+                alu_op    = 3'b011;
+            end
+            // Load instructions
+            7'b0000011: begin
+                reg_write = 1'b1;
+                alu_src   = 1'b1;
+                alu_op    = 3'b000;
+                mem_read  = 1'b1;
+                mem_to_reg = 1'b1;
+            end
+            // Store instructions
+            7'b0100011: begin
+                alu_src   = 1'b1;
+                alu_op    = 3'b000;
+                mem_write = 1'b1;
+            end
+            // Branch instructions
+            7'b1100011: begin
+                alu_src = 1'b0;
+                alu_op  = 3'b001;
+                branch  = 1'b1;
+            end
+            // LUI
+            7'b0110111: begin
+                reg_write = 1'b1;
+                alu_src   = 1'b1;
+                alu_op    = 3'b011;
+            end
+            // AUIPC
+            7'b0010111: begin
+                reg_write = 1'b1;
+                alu_src   = 1'b1;
+                alu_op    = 3'b011;
+                auipc     = 1'b1;
+            end
+            // JAL
+            7'b1101111: begin
+                reg_write = 1'b1;
+                jump      = 1'b1;
+            end
+            // JALR
+            7'b1100111: begin
+                reg_write = 1'b1;
+                jump      = 1'b1;
+                alu_src   = 1'b1;
+            end
+            default: begin
+                // All control signals remain at defaults
+            end
+        endcase
+    end
 
 endmodule
